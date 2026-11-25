@@ -300,8 +300,8 @@ public final class UrlHandlerFilter implements WebFilter {
 		@Override
 		public Mono<Void> handleInternal(ServerWebExchange exchange, WebFilterChain chain) {
 			String location = trimTrailingSlash(exchange.getRequest());
-			if (location.length() > 2 && location.startsWith("//")) {
-				location = (location.charAt(2) != '/' ? location.substring(1) : location);
+			while (location.length() > 2 && location.startsWith("//")) {
+				location = location.substring(1);
 			}
 			ServerHttpResponse response = exchange.getResponse();
 			response.setStatusCode(this.statusCode);
