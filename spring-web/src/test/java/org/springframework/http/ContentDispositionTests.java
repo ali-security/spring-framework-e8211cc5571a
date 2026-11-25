@@ -162,6 +162,15 @@ class ContentDispositionTests {
 	}
 
 	@Test
+	void parseBackslashInName() {
+		String s = "form-data; name=\"foo\\\"bar\"; filename=\"foo.txt\"";
+		ContentDisposition cd = ContentDisposition.parse(s);
+		assertThat(cd.getName()).isEqualTo("foo\"bar");
+		assertThat(cd.getFilename()).isEqualTo("foo.txt");
+		assertThat(cd.toString()).isEqualTo(s);
+	}
+
+	@Test
 	void parseBackslashInLastPosition() {
 		ContentDisposition cd = ContentDisposition.parse("form-data; name=\"foo\"; filename=\"bar\\\"");
 		assertThat(cd.getName()).isEqualTo("foo");
@@ -318,6 +327,51 @@ class ContentDispositionTests {
 		String filename = "\"中文.txt";
 		assertThat(ContentDisposition.formData().filename(filename, StandardCharsets.UTF_8).build().toString())
 				.isEqualTo("form-data; filename=\"=?UTF-8?Q?=22=E4=B8=AD=E6=96=87.txt?=\"; filename*=UTF-8''%22%E4%B8%AD%E6%96%87.txt");
+	}
+
+	@Test
+	void formatWithControlCharactersInName() {
+		String name = "foo\r\nSet-Cookie: evil=true\u0000\u001F\u007F";
+		assertThat(ContentDisposition.formData().name(name).build().toString())
+				.isEqualTo("form-data; name=\"fooSet-Cookie: evil=true\"");
+	}
+
+	@Test
+	void formatWithQuotesInName() {
+		String name = "foo\"; filename=\"evil.sh";
+		ContentDisposition cd = ContentDisposition.formData().name(name).filename("foo.txt").build();
+		assertThat(cd.toString())
+				.isEqualTo("form-data; name=\"foo\\\"; filename=\\\"evil.sh\"; filename=\"foo.txt\"");
+		ContentDisposition parsed = ContentDisposition.parse(cd.toString());
+		assertThat(parsed.getName()).isEqualTo(name);
+		assertThat(parsed.getFilename()).isEqualTo("foo.txt");
+	}
+
+	@Test
+	void formatWithControlCharactersInFilename() {
+		BiConsumer<String, String> tester = (input, output) -> {
+			assertThat(ContentDisposition.formData().filename(input).build().toString())
+					.isEqualTo("form-data; filename=\"" + output + "\"");
+			assertThat(ContentDisposition.formData().filename(input, StandardCharsets.US_ASCII).build().toString())
+					.isEqualTo("form-data; filename=\"" + output + "\"");
+		};
+
+		tester.accept("foo\r\n.txt", "foo.txt");
+		tester.accept("foo.txt\r\nSet-Cookie: evil=true", "foo.txtSet-Cookie: evil=true");
+		tester.accept("foo\"\r\n\r\n--boundary\r\n.txt", "foo\\\"--boundary.txt");
+		tester.accept("\tfoo\u0000\u0008\u000B\u000C\u001F\u007F.txt", "foo.txt");
+	}
+
+	@Test
+	void formatWithControlCharactersInUtf8Filename() {
+		String result = ContentDisposition.attachment()
+				.name("na\r\nme")
+				.filename("中文\r\nSet-Cookie: evil=true.txt", StandardCharsets.UTF_8)
+				.build().toString();
+		assertThat(result).doesNotContain("\r").doesNotContain("\n");
+		assertThat(result).isEqualTo("attachment; name=\"name\"; " +
+				"filename=\"=?UTF-8?Q?=E4=B8=AD=E6=96=87=0D=0ASet-Cookie:_evil=3Dtrue.txt?=\"; " +
+				"filename*=UTF-8''%E4%B8%AD%E6%96%87%0D%0ASet-Cookie%3A%20evil%3Dtrue.txt");
 	}
 
 	@Test
